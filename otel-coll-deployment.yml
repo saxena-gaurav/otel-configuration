@@ -1,0 +1,117 @@
+mode: deployment
+
+replicaCount: 3
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 3Gi
+
+extraEnvs:
+  - name: TEMPO_USER
+    valueFrom:
+      secretKeyRef:
+        name: grafana-cloud
+        key: tempoUser
+  - name: TEMPO_PASS
+    valueFrom:
+      secretKeyRef:
+        name: grafana-cloud
+        key: tempoPass
+  - name: MIMIR_USER
+    valueFrom:
+      secretKeyRef:
+        name: grafana-cloud
+        key: mimirUser
+  - name: MIMIR_PASS
+    valueFrom:
+      secretKeyRef:
+        name: grafana-cloud
+        key: mimirPass
+
+config:
+  extensions:
+    basicauth/traces:
+      client_auth:
+        username: "${TEMPO_USER}"
+        password: "${TEMPO_PASS}"
+    basicauth/metrics:
+      client_auth:
+        username: "${MIMIR_USER}"
+        password: "${MIMIR_PASS}"
+
+  connectors:
+    spanmetrics:
+      histogram:
+        explicit:
+          buckets: [1ms, 2ms, 4ms, 8ms, 20ms, 50ms, 100ms, 400ms, 600ms, 1s, 2s, 5s]
+      dimensions_cache_size: 50000
+  
+  exporters:
+    otlp:
+      endpoint: tempo-us-central1.grafana.net:443
+      tls:
+        insecure: false
+      sending_queue:
+        num_consumers: 4
+        queue_size: 100
+      retry_on_failure:
+        enabled: true
+      auth:
+        authenticator: basicauth/traces
+
+    prometheusremotewrite:
+      endpoint: "https://prometheus-us-central1.grafana.net/api/prom/push"
+      auth:
+        authenticator: basicauth/metrics
+      resource_to_telemetry_conversion:
+        enabled: true
+      target_info:
+        enabled: true
+
+    logging:
+      verbosity: detailed
+
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 75
+      spike_limit_percentage: 50
+
+    batch:
+      send_batch_size: 10000
+      timeout: 10s
+
+    tail_sampling:
+      decision_wait: 10s
+      num_traces: 100
+      expected_new_traces_per_sec: 10
+      policies:
+        [
+          {
+            name: errors-policy,
+            type: status_code,
+            status_code: {status_codes: [ERROR]}
+          },
+          {
+            name: randomized-policy,
+            type: probabilistic,
+            probabilistic: {sampling_percentage: 100}
+          },
+        ]
+
+  service:
+    #telemetry:
+      #logs:
+        #level: "debug"
+      #metrics:
+        #address: ":8888"
+    extensions: [basicauth/traces, basicauth/metrics, health_check, memory_ballast ]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [tail_sampling, memory_limiter, batch]
+        exporters: [otlp, spanmetrics, logging]
+      metrics:
+        receivers: [prometheus, spanmetrics]
+        exporters: [prometheusremotewrite]

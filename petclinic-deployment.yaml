@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: petclinic-spring
+  namespace: sample-app
+  labels:
+    app: petclinic-spring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: petclinic-spring
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: 'observability/bdrck-otel-instrumentation'
+        sidecar.opentelemetry.io/inject: 'true'
+      labels:
+        app: petclinic-spring
+    spec:
+      containers:
+      - name: petclinic-spring
+        image: gsaxena2/spring-framework-petclinic:0.1
+        ports:
+        - containerPort: 8080
+

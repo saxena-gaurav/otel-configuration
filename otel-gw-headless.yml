@@ -1,0 +1,17 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: bdrck-gw-opentelemetry-collector-headless
+  namespace: observability
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: bdrck-gw
+    app.kubernetes.io/name: opentelemetry-collector
+    component: standalone-collector
+  ports:
+  - name: otlp
+    protocol: TCP
+    appProtocol: grpc
+    port: 4317
+    targetPort: 4317
